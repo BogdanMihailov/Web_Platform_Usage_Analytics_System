@@ -1,0 +1,95 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: webanalyzer
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build: ./backend
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/webanalyzer
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import sys,urllib.request as u; \
+        r=u.urlopen('http://localhost:8000/health'); \
+        sys.exit(0 if r.status==200 else 1)\""]
+      interval: 10s
+      retries: 5
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+
+  realtime:
+    build: ./realtime
+    depends_on:
+      - backend
+    ports:
+      - "8700:8700"
+
+  exporter:
+    build: ./exporter
+    depends_on:
+      - db
+    ports:
+      - "8600:8600"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/webanalyzer
+
+  ingestion:
+    build: ./ingestion
+    depends_on:
+      - db
+      - realtime
+    ports:
+      - "8200:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/webanalyzer
+  processor:
+    build: ./processor
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/webanalyzer
+    restart: on-failure
+
+  alerting:
+    build: ./alerting
+    depends_on:
+      - db
+    ports:
+      - "8300:8300"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/webanalyzer
+      # Optional: set ALERT_WEBHOOK_URL to receive JSON POSTs when alerts fire
+      # ALERT_WEBHOOK_URL: "http://your-hook.example/"
+      CHECK_INTERVAL_SECONDS: "60"
+      ALERT_WINDOW_MINUTES: "5"
+      BASELINE_WINDOW_MINUTES: "60"
+      THRESHOLD_MULTIPLIER: "3.0"
+  auth:
+    build: ./auth
+    depends_on:
+      - db
+    ports:
+      - "8400:8400"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/webanalyzer
+      # Set an admin user (created on first startup if missing)
+      AUTH_ADMIN_USER: "admin"
+      AUTH_ADMIN_PASSWORD: "admin"
+      AUTH_SECRET: "change-me-secret"
+
+volumes:
+  pgdata:

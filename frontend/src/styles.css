@@ -1,0 +1,71 @@
+.root{box-sizing:border-box}
+body{font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background:#f5f7fb; color:#0f172a; margin:0; line-height:1.45}
+.container{max-width:1000px;margin:20px auto;padding:20px}
+.card{background:white;border-radius:10px;padding:14px;margin:14px 0;box-shadow:0 8px 24px rgba(15,23,42,0.06)}
+.row{display:flex;align-items:center}
+.muted{color:#6b7280;font-size:0.95rem}
+.btn{background:#2563eb;color:white;border:none;padding:4px 9px;border-radius:8px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;font-size:13px;line-height:1;min-height:28px}
+.btn--danger{background:#ef4444;color:white;font-weight:700}
+.pre{background:#f6f8fb;padding:10px;border-radius:8px;overflow:auto}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+.metric{background:#fbfdff;padding:12px;border-radius:10px;border:1px solid #eef2ff}
+.metric .k{font-size:0.92rem;color:#334155}
+.metric .v{font-weight:700;margin-top:6px;font-size:1.05rem}
+
+/* Controls layout */
+.controls{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.controls .site-label{font-weight:600}
+.controls .site-input{padding:6px;border-radius:6px;border:1px solid #ddd;min-width:160px;font-size:14px}
+.controls .period-label{font-weight:600}
+.controls .timezone-label{font-weight:600}
+/* Make selects match the site input size and use subheading-like text (15px, normal weight) */
+.controls select{
+	padding:6px;
+	border-radius:6px;
+	border:1px solid #ddd;
+	min-width:160px;
+	font-size:14px;
+	font-weight:400; /* not bold */
+	color:#0f172a;
+	background:white;
+}
+/* Ensure control labels have the heading size explicitly */
+.controls .site-label, .controls .period-label, .controls .timezone-label{font-size:16px}
+.controls .center-wrapper{flex:1;display:flex;justify-content:center;align-items:center;gap:8px}
+.controls .right-wrapper{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+/* Typography: two main styles */
+.heading{font-weight:600;font-size:16px;color:#0f172a}
+.body{font-size:13px;color:#0f172a}
+.num-right{width:60px;text-align:center;color:#0f172a;font-weight:400;font-size:14px}
+.num-right-wide{width:120px;text-align:center;color:#0f172a;font-weight:400;font-size:14px}
+/* Subheading: for table column headers inside sections (slightly smaller than main heading) */
+.subheading{font-weight:600;font-size:15px;color:#0f172a}
+
+/* Explicit class for "No data" labels to enforce 14px size */
+.no-data{color:#6b7280;font-size:14px}
+
+/* Realtime label: match heading styles (16px, bold) and provide status color classes */
+.realtime-label{font-weight:600;font-size:16px;color:#0f172a;display:flex;align-items:center;gap:8px}
+.realtime-label .status-connected{color:#16a34a}
+.realtime-label .status-disconnected{color:#6b7280}
+
+/* Styled long dash for empty metrics */
+.dash{color:#6b7280;font-size:14px}
+
+/* Strong dash for Overview primary metrics: black and bold, same size as metric values */
+.dash-strong{color:#0f172a;font-weight:700;font-size:1.05rem}
+
+/* Inline dash matching small label style (used for avg in Sessions) */
+.dash-inline{color:#0f172a;font-weight:400;font-size:12px}
+
+/* Peak hours column bars: allow smooth height transitions when data updates */
+.peak-bar{width:20px;margin:0 auto;background:#60a5fa;display:flex;align-items:flex-end;justify-content:center;transition:height 220ms cubic-bezier(.22,.9,.31,1)}
+
+/* Responsive tweaks */
+@media (max-width: 800px) {
+	.metrics{grid-template-columns:1fr 1fr}
+}
+@media (max-width: 480px) {
+	.metrics{grid-template-columns:1fr}
+}
+

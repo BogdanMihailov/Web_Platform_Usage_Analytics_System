@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "SiteAnalytics Injector (POC)",
+  "version": "0.1.0",
+  "description": "Injects lightweight analytics on arbitrary pages and forwards events to your backend.",
+  "permissions": ["scripting","storage","activeTab"],
+  "host_permissions": ["<all_urls>", "http://localhost:8000/*","http://127.0.0.1:8000/*"],
+  "background": { "service_worker": "background.js" },
+  "action": {},
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content_script.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
