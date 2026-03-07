@@ -85,3 +85,8 @@ def collect(event: EventIn, request: Request, session: Session = Depends(get_ses
     except Exception:
         pass
     return None
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

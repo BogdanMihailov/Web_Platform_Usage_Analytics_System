@@ -19,13 +19,18 @@ def verify_password(plain: str, hashed: str) -> bool:
     return PWD_CTX.verify(plain, hashed)
 
 
-def create_access_token(subject: str, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(subject: str, token_version: int = 0, role: str = "viewer", expires_delta: Optional[timedelta] = None) -> str:
     now = datetime.utcnow()
     if expires_delta:
         exp = now + expires_delta
     else:
         exp = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode = {"sub": subject, "exp": int(exp.timestamp())}
+    to_encode = {
+        "sub": subject,
+        "exp": int(exp.timestamp()),
+        "ver": int(token_version),
+        "role": role,
+    }
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 

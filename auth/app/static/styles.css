@@ -1,81 +1,383 @@
-:root{
-	--bg:#0f1724;
-	--muted:#6b7280;
-	--surface:#ffffff;
-	--accent:#0b5fff;
-	--radius:10px;
-	--maxw:1100px;
-}
-.body-bg{background:linear-gradient(180deg,#f6f8fa,#f6f8fa)}
-.page{height:100vh;display:flex;flex-direction:column}
-html, body{height:100%;margin:0;padding:0;overflow:hidden}
-body{font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background:#f6f8fb; color:#0f1724}
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;background:transparent;max-width:var(--maxw);margin:18px auto}
-.brand{font-weight:700;color:var(--accent);font-size:18px}
-.content{max-width:var(--maxw);margin:0 auto;padding:0;min-height:100vh;display:flex;align-items:center;justify-content:center}
-.panel{background:var(--surface);padding:20px;border-radius:var(--radius);box-shadow:0 6px 18px rgba(15,23,36,0.06);margin-bottom:18px}
-.panel h1{margin:0 0 8px 0}
-.panel .muted{color:var(--muted);margin-bottom:12px}
-.form-row{display:flex;flex-direction:column;gap:10px;max-width:420px}
-input{padding:12px;border-radius:8px;border:1px solid #e6eef9;font-size:14px}
-.btn{padding:8px 12px;border-radius:8px;border:1px solid transparent;background:#eef2ff;color:var(--accent);cursor:pointer}
-.btn.primary{background:var(--accent);color:#fff}
-.btn.ghost{background:transparent;border:1px solid rgba(15,23,36,0.06)}
-.panel-header{display:flex;justify-content:space-between;align-items:center}
-.panel-actions{display:flex;gap:8px}
-.table-wrap{overflow:auto;margin-top:12px}
-table{width:100%;border-collapse:collapse}
-thead th{font-size:13px;text-align:left;padding:10px 12px;color:var(--muted);border-bottom:1px solid #f1f5f9}
-tbody td{padding:12px 12px;border-bottom:1px solid #f8fafc}
-.modal{position:fixed;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.4)}
-.modal-card{width:420px;background:var(--surface);padding:18px;border-radius:10px;box-shadow:0 10px 40px rgba(2,6,23,0.18)}
-.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
-.checkbox{display:flex;align-items:center;gap:8px;margin-top:8px}
-.hidden{display:none}
-
-@media (min-width:900px){
-	.form-row{flex-direction:row}
-	.form-row input{flex:1}
+:root {
+  --bg: #0f1724;
+  --muted: #6b7280;
+  --surface: #ffffff;
+  --accent: #0b5fff;
+  --radius: 10px;
+  --maxw: 1200px;
 }
 
-/* Hero login card: two-column layout (left: big text, right: form) */
-.hero-card{display:flex;gap:28px;align-items:stretch}
-.hero-left{flex:1;padding:28px 20px}
-.hero-right{width:420px;display:flex;flex-direction:column;justify-content:flex-start;padding:20px}
-.brand-big{color:var(--accent);font-weight:700;margin-bottom:6px}
-.hero-title{font-size:40px;margin:6px 0 8px 0}
-.hero-desc{color:var(--muted);max-width:520px}
-.hero-form{display:flex;flex-direction:column;gap:10px}
-.hero-input{padding:14px;border-radius:10px;border:1px solid #e6eef9;font-size:15px;background:#fff}
-.hero-cta{display:flex;justify-content:flex-end;margin-top:22px}
-.btn.large{padding:12px 18px;border-radius:12px;font-size:15px}
-
-/* Make hero card prominent on large screens */
-@media (min-width:1100px){
-	/* keep page background uniform; make panel transparent so hero card looks separate */
-	.panel{padding:0;background:transparent;box-shadow:none;margin-bottom:0}
-	/* move hero card higher and use a tighter, subtler shadow */
-	.hero-card{background:linear-gradient(180deg,#ffffff,#fbfdff);border-radius:20px;padding:0;box-shadow:0 12px 30px rgba(15,23,36,0.06);overflow:hidden;max-width:1100px;margin:0 auto;transform:translateY(-8vh)}
-	.hero-left{padding:48px}
-	.hero-right{padding:36px}
+* {
+  box-sizing: border-box;
 }
 
-/* Floating label field */
-.field{position:relative}
-.field .hero-input{width:100%;padding:18px 12px;border-radius:10px;border:1px solid #e6eef9;background:transparent;box-sizing:border-box;font-size:15px}
-.field label{position:absolute;left:12px;top:14px;color:var(--muted);pointer-events:none;transition:all .18s ease;transform-origin:left top;padding:0 8px;background:var(--surface);z-index:3}
-.field.filled label, .field .hero-input:focus + label{transform:translateY(-140%) scale(.9);font-size:12px;color:var(--accent);padding:0 4px}
-.field label{box-decoration-break:clone}
-.field .hero-input:focus + label{z-index:4}
-.field .hero-input:focus{outline:none;border-color:rgba(11,95,255,0.9);box-shadow:0 6px 18px rgba(11,95,255,0.06)}
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
 
-/* Slight visual nudge: lower the password input a few pixels without affecting layout (keeps button position) */
-.hero-input#password{transform:translateY(6px)}
-/* keep the label for password lowered together with the input so they stay aligned */
-.hero-input#password + label{top:20px}
+body {
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  background: #f6f8fb;
+  color: #0f1724;
+}
 
-/* restore original label background sizing */
+.page {
+  min-height: 100vh;
+}
 
-/* tweak hero-left typography spacing */
-.hero-title{font-size:36px;margin:0 0 8px 0}
-.hero-desc{color:var(--muted);max-width:520px;margin-top:6px}
+.content {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.panel {
+  background: var(--surface);
+  padding: 20px;
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px rgba(15, 23, 36, 0.06);
+  margin-bottom: 18px;
+}
+
+.panel h1,
+.panel h2 {
+  margin-top: 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+input,
+select {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #e6eef9;
+  font-size: 14px;
+  width: 100%;
+}
+
+.btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: #eef2ff;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn.ghost {
+  background: transparent;
+  border: 1px solid rgba(15, 23, 36, 0.12);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.table-wrap {
+  overflow: auto;
+  margin-top: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead th {
+  font-size: 13px;
+  text-align: left;
+  padding: 10px 12px;
+  color: var(--muted);
+  border-bottom: 1px solid #f1f5f9;
+  white-space: nowrap;
+}
+
+tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f8fafc;
+  vertical-align: top;
+}
+
+.hidden {
+  display: none;
+}
+
+.hero-card {
+  display: flex;
+  gap: 28px;
+  align-items: stretch;
+}
+
+.hero-left {
+  flex: 1;
+  padding: 28px 20px;
+}
+
+.hero-right {
+  width: 420px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 20px;
+}
+
+.brand-big {
+  color: var(--accent);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.hero-title {
+  font-size: 36px;
+  margin: 0 0 8px 0;
+}
+
+.hero-desc {
+  color: var(--muted);
+  max-width: 520px;
+  margin-top: 6px;
+}
+
+.hero-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hero-input {
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid #e6eef9;
+  font-size: 15px;
+  background: #fff;
+}
+
+.hero-cta {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+
+.btn.large {
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 15px;
+}
+
+.field {
+  position: relative;
+}
+
+.field .hero-input {
+  width: 100%;
+  padding: 18px 12px;
+  border-radius: 10px;
+  border: 1px solid #e6eef9;
+  background: transparent;
+  font-size: 15px;
+}
+
+.field label {
+  position: absolute;
+  left: 12px;
+  top: 14px;
+  color: var(--muted);
+  pointer-events: none;
+  transition: all 0.18s ease;
+  transform-origin: left top;
+  padding: 0 8px;
+  background: var(--surface);
+  z-index: 3;
+}
+
+.field.filled label,
+.field .hero-input:focus + label {
+  transform: translateY(-140%) scale(0.9);
+  font-size: 12px;
+  color: var(--accent);
+  padding: 0 4px;
+}
+
+.field .hero-input:focus {
+  outline: none;
+  border-color: rgba(11, 95, 255, 0.9);
+  box-shadow: 0 6px 18px rgba(11, 95, 255, 0.06);
+}
+
+.error-text {
+  margin-top: 10px;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.second-row {
+  grid-template-columns: 3fr 2fr;
+}
+
+.subpanel {
+  border: 1px solid #e8eef7;
+  border-radius: 10px;
+  padding: 14px;
+  background: #fff;
+}
+
+.subpanel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.filters-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.form-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inline-cell {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 260px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge.ok {
+  background: #ecfdf3;
+  color: #166534;
+}
+
+.badge.warn {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.badge.danger {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.summary-card {
+  border: 1px solid #e8eef7;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fbfdff;
+}
+
+.summary-title {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.summary-value {
+  font-size: 22px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.services-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.service-card {
+  border: 1px solid #e8eef7;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fbfdff;
+}
+
+.service-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.service-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+@media (max-width: 1100px) {
+  .hero-card {
+    flex-direction: column;
+  }
+
+  .hero-right {
+    width: 100%;
+    padding-top: 0;
+  }
+
+  .admin-grid,
+  .second-row {
+    grid-template-columns: 1fr;
+  }
+
+  .filters-row {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-cell {
+    min-width: 220px;
+    flex-wrap: wrap;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+}

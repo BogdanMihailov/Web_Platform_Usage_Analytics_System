@@ -1,6 +1,7 @@
-import React, {useEffect, useState} from 'react'
+﻿import React, {useEffect, useState} from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles.css'
+import { AdminPanel } from './AdminPanel'
 
 async function api(path: string, opts: any = {}){
   try{
@@ -14,11 +15,21 @@ async function api(path: string, opts: any = {}){
   }catch(e:any){ console.error('API error', e); throw e }
 }
 
+const AUTH_BASE = (import.meta as any).env?.VITE_AUTH_URL || `http://${window.location.hostname}:8400`;
+
 
 function Dashboard() {
   // simple localStorage helpers
   const lsGet = (k: string) => { try { return window.localStorage.getItem(k); } catch(e){ return null } }
   const lsSet = (k: string, v: string) => { try { window.localStorage.setItem(k, v); } catch(e){} }
+
+  const [authReady, setAuthReady] = useState<boolean>(false);
+  const [authToken, setAuthToken] = useState<string | null>(() => lsGet('auth_token'));
+  const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const [loginUsername, setLoginUsername] = useState<string>('');
+  const [loginPassword, setLoginPassword] = useState<string>('');
+  const [loginBusy, setLoginBusy] = useState<boolean>(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const [site, setSite] = useState<string>(() => lsGet('site') || "");
   const [days, setDays] = useState<number>(() => { const v = lsGet('days'); return v ? Number(v) : 1 });
@@ -53,15 +64,145 @@ function Dashboard() {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState<boolean>(false);
+  const [showAdmin, setShowAdmin] = useState<boolean>(() => lsGet('showAdmin') === '1');
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const [format, setFormat] = useState<string>(() => lsGet('format') || 'csv');
   const [exporting, setExporting] = useState<boolean>(false);
+  const isAdmin = !!(currentUser && (currentUser.is_admin || currentUser.role === 'admin'));
+  const inAdminPanel = isAdmin && showAdmin;
+
+  async function fetchCurrentUser(token: string){
+    const res = await fetch(`${AUTH_BASE}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if(!res.ok){
+      const text = await res.text().catch(()=>null);
+      throw new Error(text || `HTTP ${res.status}`);
+    }
+    return await res.json();
+  }
+
+  function formatLoginError(errorMessage: string): string {
+    if (!errorMessage) return '';
+    
+    // Try to parse JSON error
+    try {
+      const parsed = JSON.parse(errorMessage);
+      if (parsed?.detail) {
+        errorMessage = parsed.detail;
+      }
+    } catch (e) {
+      // Not JSON, use as is
+    }
+    
+    // Replace technical messages with user-friendly Russian text
+    const lower = errorMessage.toLowerCase();
+    if (lower.includes('invalid credentials') || lower.includes('invalid') || lower.includes('unauthorized')) {
+      return 'Неверный логин или пароль';
+    }
+    if (lower.includes('blocked') || lower.includes('заблокирован')) {
+      return 'Ваш аккаунт заблокирован';
+    }
+    if (lower.includes('missing auth') || lower.includes('no token')) {
+      return 'Требуется авторизация';
+    }
+    
+    // Return original message if no match
+    return errorMessage;
+  }
+
+  async function handleLogin(e: React.FormEvent){
+    e.preventDefault();
+    setLoginError(null);
+    setLoginBusy(true);
+    try{
+      const username = (loginUsername || '').trim();
+      if(!username || !loginPassword){
+        throw new Error('Введите username и password');
+      }
+      const res = await fetch(`${AUTH_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password: loginPassword }),
+      });
+      if(!res.ok){
+        const text = await res.text().catch(()=>null);
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if(!data?.access_token){
+        throw new Error('Не получен access token');
+      }
+      lsSet('auth_token', data.access_token);
+      setAuthToken(data.access_token);
+      const me = await fetchCurrentUser(data.access_token);
+      setCurrentUser(me);
+      setLoginPassword('');
+    }catch(err:any){
+      setLoginError(err?.message || String(err));
+    }finally{
+      setLoginBusy(false);
+      setAuthReady(true);
+    }
+  }
+
+  function handleLogout(){
+    try{ window.localStorage.removeItem('auth_token'); }catch(e){}
+    setAuthToken(null);
+    setCurrentUser(null);
+    setShowAdmin(false);
+    setShowHelp(false);
+    setLoginError(null);
+  }
+
+  useEffect(() => {
+    // Do not reset view while auth bootstrap is still loading.
+    if (!authReady || !currentUser) return;
+    if (!isAdmin && showAdmin) {
+      setShowAdmin(false);
+    }
+  }, [authReady, currentUser, isAdmin, showAdmin]);
+
+  // Auth init: read token from query/localStorage and validate it.
+  useEffect(() => {
+    let initialToken = authToken;
+    try{
+      const params = new URLSearchParams(window.location.search);
+      const queryToken = params.get('token');
+      if(queryToken){
+        initialToken = queryToken;
+        lsSet('auth_token', queryToken);
+        setAuthToken(queryToken);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('token');
+        window.history.replaceState({}, '', url.toString());
+      }
+    }catch(e){}
+
+    if(!initialToken){
+      setAuthReady(true);
+      return;
+    }
+
+    fetchCurrentUser(initialToken)
+      .then((me)=>{
+        setCurrentUser(me);
+      })
+      .catch(()=>{
+        try{ window.localStorage.removeItem('auth_token'); }catch(e){}
+        setAuthToken(null);
+        setCurrentUser(null);
+      })
+      .finally(()=>setAuthReady(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // persist selected values to localStorage
   useEffect(()=>{ lsSet('site', site || ''); }, [site]);
   useEffect(()=>{ lsSet('days', String(days)); }, [days]);
   useEffect(()=>{ lsSet('timezone', timezone); }, [timezone]);
   useEffect(()=>{ lsSet('format', format); }, [format]);
+  useEffect(()=>{ lsSet('showAdmin', showAdmin ? '1' : '0'); }, [showAdmin]);
   useEffect(()=>{ try{ lsSet('collapsed', JSON.stringify(collapsed)) }catch(e){} }, [collapsed]);
   useEffect(()=>{ try{ lsSet('sectionsOrder', JSON.stringify(sectionsOrder)) }catch(e){} }, [sectionsOrder]);
 
@@ -138,25 +279,18 @@ function Dashboard() {
     }
   }
 
-  // On mount, load only if a site is present (prevent loading metrics for empty site)
-  useEffect(() => { if((site||'').trim()) load();
-    // read token from query string on initial load (frontend receives token from auth redirect)
-    try{
-      const params = new URLSearchParams(window.location.search);
-      const t = params.get('token');
-      if(t){ window.localStorage.setItem('auth_token', t); // store for frontend usage
-        // remove token from url for cleanliness
-        const url = new URL(window.location.href);
-        url.searchParams.delete('token');
-        window.history.replaceState({}, '', url.toString());
-      }
-    }catch(e){}
-  }, []);
+  // After auth, load only if a site is present.
+  useEffect(() => {
+    if(!authReady || !authToken) return;
+    if((site||'').trim()) load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authReady, authToken]);
 
   // keep latestSiteRef in sync with site changes (covers programmatic setSite and localStorage init)
   useEffect(() => { latestSiteRef.current = site; }, [site]);
 
   useEffect(() => {
+    if(!authToken) return;
     let ws: WebSocket | null = null;
     try{
       const envHost = (import.meta as any).env?.VITE_REALTIME_HOST;
@@ -171,7 +305,7 @@ function Dashboard() {
       ws.onerror = (e) => { console.warn('Realtime WS error', e); setWsConnected(false); }
     }catch(e){ console.warn('Failed to connect realtime ws', e) }
     return () => { if(ws) try{ ws.close() }catch(e){} }
-  }, []);
+  }, [authToken]);
 
   
 
@@ -183,7 +317,7 @@ function Dashboard() {
     const allowZero = !!opts.allowZero;
     const strong = !!opts.strong;
     const unit = opts.unit;
-    if (value === undefined || value === null) return strong ? <span className="dash-strong">-</span> : <span className="dash">—</span>;
+    if (value === undefined || value === null) return strong ? <span className="dash-strong">-</span> : <span className="dash">-</span>;
     if (!allowZero && Number(value) === 0) return strong ? <span className="dash-strong">-</span> : <span className="dash-inline">-</span>;
     return unit ? <span>{`${value} ${unit}`}</span> : <span>{value}</span>;
   }
@@ -231,7 +365,7 @@ function Dashboard() {
           <div style={{display:'flex',alignItems:'center',cursor:'grab'}} onClick={()=>toggleSection('overviewMetrics')}>
             <div className="heading">Overview</div>
             <div style={{flex:1}} />
-            <div style={{opacity:0.6}}>{collapsed.overviewMetrics ? '▸' : '▾'}</div>
+            <div style={{opacity:0.6}}>{collapsed.overviewMetrics ? '>' : 'v'}</div>
           </div>
           {!collapsed.overviewMetrics && (
             <div className="metrics">
@@ -249,7 +383,7 @@ function Dashboard() {
         <div className="card" style={{marginTop:16}} key={key} draggable onDragStart={(e)=>onDragStart(e,key)} onDragOver={onDragOver} onDrop={(e)=>onDrop(e,key)}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'grab'}} onClick={()=>toggleSection('topPages')}>
             <div className="heading">Top Pages</div>
-            <div style={{opacity:0.6}}>{collapsed.topPages ? '▸' : '▾'}</div>
+            <div style={{opacity:0.6}}>{collapsed.topPages ? '>' : 'v'}</div>
           </div>
           {!collapsed.topPages && (
             <div style={{marginTop:12}}>
@@ -275,7 +409,7 @@ function Dashboard() {
         <div className="card" style={{marginTop:16}} key={key} draggable onDragStart={(e)=>onDragStart(e,key)} onDragOver={onDragOver} onDrop={(e)=>onDrop(e,key)}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'grab'}} onClick={()=>toggleSection('peakHours')}>
             <div className="heading">Peak Hours</div>
-            <div style={{opacity:0.6}}>{collapsed.peakHours ? '▸' : '▾'}</div>
+            <div style={{opacity:0.6}}>{collapsed.peakHours ? '>' : 'v'}</div>
           </div>
           {!collapsed.peakHours && (() => {
             let displayHours = hours;
@@ -319,7 +453,7 @@ function Dashboard() {
         <div className="card" style={{marginTop:16}} key={key} draggable onDragStart={(e)=>onDragStart(e,key)} onDragOver={onDragOver} onDrop={(e)=>onDrop(e,key)}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'grab'}} onClick={()=>toggleSection('referrers')}>
             <div className="heading">Referrers</div>
-            <div style={{opacity:0.6}}>{collapsed.referrers ? '▸' : '▾'}</div>
+            <div style={{opacity:0.6}}>{collapsed.referrers ? '>' : 'v'}</div>
           </div>
           {!collapsed.referrers && (
             <table style={{width:'100%',marginTop:8}}>
@@ -336,7 +470,7 @@ function Dashboard() {
         <div className="card" style={{marginTop:16}} key={key} draggable onDragStart={(e)=>onDragStart(e,key)} onDragOver={onDragOver} onDrop={(e)=>onDrop(e,key)}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'grab'}} onClick={()=>toggleSection('campaigns')}>
             <div className="heading">Campaigns</div>
-            <div style={{opacity:0.6}}>{collapsed.campaigns ? '▸' : '▾'}</div>
+            <div style={{opacity:0.6}}>{collapsed.campaigns ? '>' : 'v'}</div>
           </div>
           {!collapsed.campaigns && (
             <div style={{marginTop:8}}>
@@ -362,7 +496,7 @@ function Dashboard() {
         <div className="card" style={{marginTop:16}} key={key} draggable onDragStart={(e)=>onDragStart(e,key)} onDragOver={onDragOver} onDrop={(e)=>onDrop(e,key)}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'grab'}} onClick={()=>toggleSection('browsers')}>
             <div className="heading">Browsers</div>
-            <div style={{opacity:0.6}}>{collapsed.browsers ? '▸' : '▾'}</div>
+            <div style={{opacity:0.6}}>{collapsed.browsers ? '>' : 'v'}</div>
           </div>
           {!collapsed.browsers && (
             <table style={{width:'100%',marginTop:8}}>
@@ -379,7 +513,7 @@ function Dashboard() {
         <div className="card" style={{marginTop:16}} key={key} draggable onDragStart={(e)=>onDragStart(e,key)} onDragOver={onDragOver} onDrop={(e)=>onDrop(e,key)}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'grab'}} onClick={()=>toggleSection('sessions')}>
             <div className="heading">Sessions (Top 50)</div>
-            <div style={{opacity:0.6}}>{collapsed.sessions ? '▸' : '▾'}</div>
+            <div style={{opacity:0.6}}>{collapsed.sessions ? '>' : 'v'}</div>
           </div>
           {!collapsed.sessions && (
             <div>
@@ -399,16 +533,85 @@ function Dashboard() {
     }
   }
 
+  if(!authReady){
+    return (
+      <div className="container">
+        <div className="card">Проверка сессии...</div>
+      </div>
+    );
+  }
+
+  if(!authToken || !currentUser){
+    return (
+      <div className="auth-page">
+        <section id="panel-login" className="panel auth-login-panel">
+          <div className="hero-card">
+            <div className="hero-left">
+              <div className="brand-big">WebAnalyzer</div>
+              <h1 className="hero-title">Sign in</h1>
+              <p className="hero-desc">Use your account to access the dashboard.</p>
+            </div>
+            <div className="hero-right">
+              <form onSubmit={handleLogin} className="hero-form">
+                <div className={`field ${(loginUsername || '').trim() ? 'filled' : ''}`}>
+                  <input
+                    className="hero-input"
+                    id="frontend-login-username"
+                    value={loginUsername}
+                    onChange={(e)=>setLoginUsername(e.target.value)}
+                    autoComplete="username"
+                    disabled={loginBusy}
+                  />
+                  <label htmlFor="frontend-login-username">Username</label>
+                </div>
+
+                <div className={`field ${(loginPassword || '').trim() ? 'filled' : ''}`}>
+                  <input
+                    className="hero-input"
+                    id="frontend-login-password"
+                    type="password"
+                    value={loginPassword}
+                    onChange={(e)=>setLoginPassword(e.target.value)}
+                    autoComplete="current-password"
+                    disabled={loginBusy}
+                  />
+                  <label htmlFor="frontend-login-password">Password</label>
+                </div>
+
+                {loginError && (
+                  <div style={{color: '#b91c1c', fontSize: '13px', marginTop: '8px'}}>
+                    {formatLoginError(loginError)}
+                  </div>
+                )}
+
+                <div className="hero-cta">
+                  <button className="btn large" type="submit" disabled={loginBusy}>{loginBusy ? 'Signing in...' : 'Sign in'}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
-    <div className="container">
-      {}
+    <div className={`container ${inAdminPanel ? 'container-admin-mode' : ''}`}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-        <h1 style={{margin:0}}>Website Analytics Dashboard</h1>
+        <h1 style={{margin:0}}>{inAdminPanel ? 'Admin Panel' : 'Website Analytics Dashboard'}</h1>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          {isAdmin && (
+            <button className="btn" onClick={()=>setShowAdmin((prev)=>!prev)}>
+              {inAdminPanel ? 'Dashboard' : 'Admin Panel'}
+            </button>
+          )}
           <button className="btn" onClick={()=>setShowHelp(true)}>Help</button>
-          <button className="btn" onClick={()=>{ window.localStorage.removeItem('auth_token'); window.location.href = 'http://localhost:8400'; }}>Logout</button>
+          <button className="btn" onClick={handleLogout}>Logout</button>
         </div>
       </div>
+
+      {!inAdminPanel && (
+        <>
       <div className="card" style={{marginBottom:16}}>
         <div className="controls">
           <div className="site-label">Site:</div>
@@ -518,19 +721,24 @@ function Dashboard() {
       </div>
 
       {sectionsOrder.map(k=> renderSection(k))}
+        </>
+      )}
+
+      {inAdminPanel && <AdminPanel />}
+
       {showHelp && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:60}} onClick={()=>setShowHelp(false)}>
           <div style={{background:'white',padding:20,borderRadius:8,maxWidth:900,width:'90%',maxHeight:'80%',overflow:'auto'}} onClick={(e)=>e.stopPropagation()}>
-            <h2>Help — Metrics Explained</h2>
-            <p>Below are short explanations of the metrics shown in the dashboard. If you're new to analytics, start with the "Overview" section — it contains the key indicators.</p>
+            <h2>Help - Metrics Explained</h2>
+            <p>Below are short explanations of the metrics shown in the dashboard. If you're new to analytics, start with the "Overview" section - it contains the key indicators.</p>
             <h3>Overview</h3>
             <ul>
-              <li><strong>Total Views</strong> — total number of page views during the selected period.</li>
-              <li><strong>Unique Pages</strong> — count of distinct page paths visited by users.</li>
-              <li><strong>Unique Sessions</strong> — number of distinct sessions (determined by session_id).</li>
-              <li><strong>Avg. Session Duration</strong> — average duration of user sessions in seconds, computed as the difference between the first and last event timestamps for each session. Sessions without timestamps or with a single event contribute 0 seconds to this average.</li>
-              <li><strong>Avg. Views per Session</strong> — average number of page view events per session (total views divided by unique sessions).</li>
-              <li><strong>Bounce Rate</strong> — percent of sessions that had only a single event (often indicates users left after viewing one page).</li>
+              <li><strong>Total Views</strong> - total number of page views during the selected period.</li>
+              <li><strong>Unique Pages</strong> - count of distinct page paths visited by users.</li>
+              <li><strong>Unique Sessions</strong> - number of distinct sessions (determined by session_id).</li>
+              <li><strong>Avg. Session Duration</strong> - average duration of user sessions in seconds, computed as the difference between the first and last event timestamps for each session. Sessions without timestamps or with a single event contribute 0 seconds to this average.</li>
+              <li><strong>Avg. Views per Session</strong> - average number of page view events per session (total views divided by unique sessions).</li>
+              <li><strong>Bounce Rate</strong> - percent of sessions that had only a single event (often indicates users left after viewing one page).</li>
             </ul>
 
             <h3>Top Pages</h3>
@@ -540,17 +748,13 @@ function Dashboard() {
             <p>Histogram of page views by hour (UTC). Use this to identify when your site receives the most traffic.</p>
 
             <h3>Referrers &amp; Campaigns</h3>
-            <p><strong>Referrers</strong> — the referring sites or sources visitors came from ("(direct)" means no referrer). <strong>Campaigns</strong> — UTM campaign labels extracted from incoming URLs when present.</p>
+            <p><strong>Referrers</strong> - the referring sites or sources visitors came from ("(direct)" means no referrer). <strong>Campaigns</strong> - UTM campaign labels extracted from incoming URLs when present.</p>
 
             <h3>Browsers</h3>
             <p>Counts grouped by major browser families (Chrome, Firefox, Safari, Edge, Other). Useful for prioritizing compatibility testing.</p>
 
             <h3>Sessions</h3>
             <p>Shows average events per session and a list of top sessions by event count. Use this to analyze visitor engagement and find sessions with many interactions.</p>
-
-            <div style={{display:'flex',justifyContent:'flex-end',marginTop:12}}>
-              <button className="btn" onClick={()=>setShowHelp(false)}>Close</button>
-            </div>
           </div>
         </div>
       )}

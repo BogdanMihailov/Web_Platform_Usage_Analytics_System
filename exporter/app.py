@@ -90,3 +90,8 @@ def export_events(site_id: str = Query(None), days: int = Query(7, ge=0), format
     filename = f"events_{site_id or 'all'}_{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}.csv"
     headers = {"Content-Disposition": f"attachment; filename=\"{filename}\""}
     return StreamingResponse(iter_csv(), media_type='text/csv; charset=utf-8', headers=headers)
+
+
+@app.get('/health')
+def health():
+    return {'status': 'ok'}

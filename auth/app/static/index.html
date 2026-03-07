@@ -3,18 +3,18 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Auth Admin</title>
+    <title>WebAnalyzer Admin</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <div class="page">
       <main class="content">
-        <section id="panel-login" class="panel">
+        <section id="login-view" class="panel">
           <div class="hero-card">
             <div class="hero-left">
-              <div class="brand-big">WebAnalyzer — Auth</div>
-              <h1 class="hero-title">Sign in</h1>
-              <p class="hero-desc">Use your admin account to access the management console.</p>
+              <div class="brand-big">WebAnalyzer</div>
+              <h1 class="hero-title">Вход в админ-панель</h1>
+              <p class="hero-desc">Авторизуйтесь под учетной записью системного администратора.</p>
             </div>
             <div class="hero-right">
               <div class="hero-form">
@@ -28,12 +28,117 @@
                 </div>
               </div>
               <div class="hero-cta">
-                <button id="btn-login" class="btn primary large">Sign in</button>
+                <button id="btn-login" class="btn primary large">Войти</button>
               </div>
+              <div id="login-error" class="error-text hidden"></div>
             </div>
           </div>
         </section>
+
+        <section id="admin-view" class="panel hidden">
+          <div class="panel-header">
+            <div>
+              <h1>Управление админ-панелью</h1>
+              <div class="muted">Поиск пользователей, роли, блокировки, принудительный выход сессий, активность и статус сервисов.</div>
+            </div>
+            <div class="panel-actions">
+              <button id="btn-refresh-all" class="btn">Обновить</button>
+              <button id="btn-logout" class="btn ghost">Выйти</button>
+            </div>
+          </div>
+
+          <div class="admin-grid">
+            <section class="subpanel">
+              <h2>Поиск пользователей</h2>
+              <div class="filters-row">
+                <input id="search-query" placeholder="Username или email" />
+                <select id="filter-role">
+                  <option value="">Все роли</option>
+                  <option value="admin">admin</option>
+                  <option value="analyst">analyst</option>
+                  <option value="support">support</option>
+                  <option value="viewer">viewer</option>
+                  <option value="user">user</option>
+                </select>
+                <select id="filter-blocked">
+                  <option value="">Любой статус</option>
+                  <option value="false">Не заблокирован</option>
+                  <option value="true">Заблокирован</option>
+                </select>
+                <button id="btn-search" class="btn primary">Поиск</button>
+                <button id="btn-clear-filters" class="btn">Сброс</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Username</th>
+                      <th>Email</th>
+                      <th>Role</th>
+                      <th>Blocked</th>
+                      <th>Last seen</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="users-tbody"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="subpanel">
+              <h2>Создать пользователя</h2>
+              <div class="form-col">
+                <input id="create-username" placeholder="Username" />
+                <input id="create-email" placeholder="Email (optional)" />
+                <input id="create-password" type="password" placeholder="Password" />
+                <select id="create-role">
+                  <option value="user">user</option>
+                  <option value="viewer">viewer</option>
+                  <option value="support">support</option>
+                  <option value="analyst">analyst</option>
+                  <option value="admin">admin</option>
+                </select>
+                <button id="btn-create-user" class="btn primary">Создать</button>
+                <div id="create-user-msg" class="muted"></div>
+              </div>
+            </section>
+          </div>
+
+          <div class="admin-grid second-row">
+            <section class="subpanel">
+              <div class="subpanel-head">
+                <h2>Мониторинг пользовательской активности</h2>
+                <button id="btn-reload-activity" class="btn">Обновить</button>
+              </div>
+              <div id="activity-summary" class="summary-grid"></div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>User</th>
+                      <th>Action</th>
+                      <th>Details</th>
+                      <th>IP</th>
+                    </tr>
+                  </thead>
+                  <tbody id="activity-tbody"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="subpanel">
+              <div class="subpanel-head">
+                <h2>Просмотр статуса сервисов</h2>
+                <button id="btn-reload-services" class="btn">Обновить</button>
+              </div>
+              <div id="services-list" class="services-list"></div>
+            </section>
+          </div>
+        </section>
       </main>
+    </div>
 
     <script src="/static/main.js"></script>
   </body>
