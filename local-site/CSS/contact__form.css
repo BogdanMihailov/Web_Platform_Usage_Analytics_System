@@ -1,0 +1,281 @@
+@media only screen and (min-width : 1354px) {
+
+     .contact__form._active{
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          position:fixed;
+          width: 100vw;
+          height: 100vh;
+          top:0;
+          background-color: rgba(0, 0, 0, 0.753);
+          font-family: 'Comfortaa', cursive;
+          font-weight: 300;
+          color: #000000;
+     }
+
+     .contact__form {
+     display: none;
+     }
+
+     
+
+     .contact__form__container{
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          position:fixed;
+          width: 400px;
+          height: 400px;
+          background-color: white;
+     }
+
+     .contact__form__close{
+          display: flex;
+          align-items: flex-start;
+          justify-content: flex-end;
+          flex-direction: row;
+          width: 100%;
+          height: 20%;
+     }
+
+     .contact__form__close__img{
+          height: 20%;
+          margin-top: 5%;
+          margin-right: 5%;
+          cursor: pointer;
+     }
+
+     form{
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-direction: column;
+          width: 100%;
+          height: 80%; 
+     }
+
+     fieldset{
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          justify-content: center;
+          width: inherit;
+          height: inherit;
+          border: 0;
+     }
+
+     legend{
+          text-align: center;
+          display: flex;
+          font-size: 30px;
+     }
+
+     input[name="text"]{
+          width: 80%;
+          height: 20%;
+          margin-bottom: 5%;
+     }
+
+     input[name="text"]:hover{
+          border: 1px solid #F0CB06;
+     }
+
+     input[name="tel"]{
+          width: 80%;
+          height: 20%;
+          margin-bottom: 5%;
+     }
+
+     input[name="tel"]:hover{
+          border: 1px solid #F0CB06;
+     }
+
+     input[name="email"]{
+          width: 80%;
+          height: 20%;
+     }
+
+     input[name="email"]:hover{
+          border: 1px solid #F0CB06;
+     }
+
+     input[name="submit"]{
+          display: flex;
+          margin: 0;
+          border-radius: 50px;
+          width: 200px;
+          height: 50px;
+          margin-bottom: 5%;
+          cursor: pointer;
+     }
+
+     input[name="submit"]:hover{
+          
+          border: 1px solid #F0CB06;
+     }
+
+     input{
+          text-align: center;
+          display: flex;
+          flex-direction:row ;
+          align-items: flex-start;
+          justify-content: center;
+          border-radius: 5px;
+          margin-left: 10%;
+          border: 1px solid grey;
+          font-family: 'Comfortaa', cursive;
+          font-weight: 300;
+          color: #000000;
+     }
+
+     
+
+     .tablet__contact__form{
+          display: none;
+     }
+
+}
+
+@media only screen and (max-width : 1353px){
+
+     .contact__form._active{
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          position:fixed;
+          width: 100vw;
+          height: 100vh;
+          top:0;
+          background-color: rgba(0, 0, 0, 0.753);
+          font-family: 'Comfortaa', cursive;
+          font-weight: 300;
+          color: #000000;
+     }
+
+     .contact__form {
+     display: none;
+     }
+
+     
+
+     .contact__form__container{
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          position:fixed;
+          width: 80%;
+          height: 400px;
+          background-color: white;
+     }
+
+     .contact__form__close{
+          display: flex;
+          align-items: flex-start;
+          justify-content: flex-end;
+          flex-direction: row;
+          width: 100%;
+          height: 20%;
+     }
+
+     .contact__form__close__img{
+          height: 20%;
+          margin-top: 5%;
+          margin-right: 5%;
+          cursor: pointer;
+     }
+
+     form{
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-direction: column;
+          width: 100%;
+          height: 80%; 
+     }
+
+     fieldset{
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          justify-content: center;
+          width: inherit;
+          height: inherit;
+          border: 0;
+     }
+
+     legend{
+          text-align: center;
+          display: flex;
+          font-size: 7vw;
+     }
+
+     input[name="text"]{
+          width: 80%;
+          height: 20%;
+          margin-bottom: 5%;
+     }
+
+     input[name="text"]:hover{
+          border: 0.25vw solid #F0CB06;
+     }
+
+     input[name="tel"]{
+          width: 80%;
+          height: 20%;
+          margin-bottom: 5%;
+     }
+
+     input[name="tel"]:hover{
+          border: 0.25vw solid #F0CB06;
+     }
+
+     input[name="email"]{
+          width: 80%;
+          height: 20%;
+     }
+
+     input[name="email"]:hover{
+          border: 0.25vw solid #F0CB06;
+     }
+
+     input[name="submit"]{
+          display: flex;
+          margin: 0;
+          border-radius: 50px;
+          width: 200px;
+          height: 15%;
+          margin-bottom: 5%;
+          cursor: pointer;
+     }
+
+     input[name="submit"]:hover{
+          
+          border: 0.25vw solid #F0CB06;
+     }
+
+     input{
+          text-align: center;
+          display: flex;
+          flex-direction:row ;
+          align-items: flex-start;
+          justify-content: center;
+          border-radius: 5px;
+          margin-left: 10%;
+          border: 0.25vw solid grey;
+          font-family: 'Comfortaa', cursive;
+          font-weight: 300;
+          color: #000000;
+     }
+
+     
+
+     .tablet__contact__form{
+          display: none;
+     }
+}
+

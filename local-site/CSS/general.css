@@ -1,0 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poiret+One&display=swap'); 
+/* комментарий */
+html {
+     scroll-behavior: smooth;
+}
+
+body {
+     margin: 0;
+     padding: 0;
+     width: 100%;
+}
+
+body._active{
+     overflow-y: hidden;
+}
+
+::-webkit-scrollbar {
+     width: 10px; 
+     height: 10px; 
+     background-color: #00000038;
+}
+
+::-webkit-scrollbar-thumb {
+     background-color: #6c7172;
+     border-radius: 10px;
+}
+
+a{
+     text-decoration: none;
+     color: #00202a;
+}
+
+a:hover{
+     color: #F0CB06;
+}

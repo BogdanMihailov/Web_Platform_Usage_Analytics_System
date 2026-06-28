@@ -105,7 +105,7 @@ body{font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; bac
 .auth-login-panel{width:100%;max-width:1100px;margin:0 auto}
 
 .auth-login-panel .hero-card{display:flex;gap:28px;align-items:stretch}
-.auth-login-panel .hero-left{flex:1;padding:28px 20px}
+.auth-login-panel .hero-left{flex:1;padding:28px 20px;display:flex;flex-direction:column;justify-content:center}
 .auth-login-panel .hero-right{width:420px;display:flex;flex-direction:column;justify-content:flex-start;padding:20px}
 .auth-login-panel .brand-big{color:#0b5fff;font-weight:700;margin-bottom:6px}
 .auth-login-panel .hero-title{font-size:36px;margin:0 0 8px 0;color:#0f172a}
@@ -119,13 +119,36 @@ body{font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; bac
 .auth-login-panel .field label{position:absolute;left:12px;top:14px;color:#6b7280;pointer-events:none;transition:all .18s ease;transform-origin:left top;padding:0 8px;background:#fff;z-index:3}
 .auth-login-panel .field.filled label,.auth-login-panel .field .hero-input:focus + label{transform:translateY(-140%) scale(.9);font-size:12px;color:#0b5fff;padding:0 4px}
 .auth-login-panel .field .hero-input:focus{outline:none;border-color:rgba(11,95,255,0.9);box-shadow:0 6px 18px rgba(11,95,255,0.06)}
+.auth-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.auth-tab{border:1px solid #dbeafe;background:#f8fbff;color:#0f172a;border-radius:999px;padding:8px 12px;font-weight:600;cursor:pointer}
+.auth-tab--active{background:#0b5fff;color:#fff;border-color:#0b5fff}
+.auth-banner{border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.4}
+.auth-banner--info{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
+.auth-banner--success{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0}
+.auth-error{background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.4}
+.hero-links{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:0 10px;box-sizing:border-box}
+.text-link{background:transparent;border:none;color:#0b5fff;padding:0;font-weight:400;cursor:pointer;text-align:left}
+.password-hints{display:flex;flex-direction:column;gap:4px;padding:10px 12px;background:#f8fafc;border:1px dashed #dbeafe;border-radius:10px}
+.password-hints__item{font-size:12px;color:#64748b;display:flex;align-items:center;gap:6px}
+.password-hints__icon{font-weight:700;color:#ef4444}
+.password-hints__item--met{color:#047857}
+.password-hints__item--met .password-hints__icon{color:#16a34a}
+.password-hints__ok{font-size:12px;color:#047857;font-weight:600}
+.hero-cta--split{justify-content:space-between;gap:8px;flex-wrap:wrap}
+.hero-cta--split .btn{min-width:160px}
+
+.modal-backdrop{position:fixed;inset:0;z-index:70;background:rgba(15,23,42,0.52);display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-card{width:min(920px,100%);max-height:90vh;overflow:auto;background:#fff;border-radius:20px;padding:20px;box-shadow:0 24px 64px rgba(15,23,42,0.28)}
+.modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+.modal-kicker{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:700}
+.modal-title{margin:4px 0 0;font-size:28px;color:#0f172a}
 
 .btn.large{padding:12px 18px;border-radius:12px;font-size:15px}
 
 @media (min-width:1100px){
 	.auth-login-panel{padding:0;background:transparent;box-shadow:none;margin-bottom:0}
-	.auth-login-panel .hero-card{background:linear-gradient(180deg,#ffffff,#fbfdff);border-radius:20px;padding:0;box-shadow:0 12px 30px rgba(15,23,36,0.06);overflow:hidden;max-width:1100px;margin:0 auto;transform:translateY(-8vh)}
-	.auth-login-panel .hero-left{padding:48px}
+	.auth-login-panel .hero-card{background:linear-gradient(180deg,#ffffff,#fbfdff);border-radius:20px;padding:0;box-shadow:0 12px 30px rgba(15,23,36,0.06);overflow:hidden;max-width:1100px;margin:0 auto;transform:none}
+	.auth-login-panel .hero-left{padding:48px;display:flex;flex-direction:column;justify-content:center}
 	.auth-login-panel .hero-right{padding:36px}
 }
 

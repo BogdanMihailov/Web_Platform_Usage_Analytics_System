@@ -3,10 +3,15 @@ import { createRoot } from 'react-dom/client'
 import './styles.css'
 import { AdminPanel } from './AdminPanel'
 
+type AuthMode = 'login' | 'register' | 'forgot' | 'reset';
+
+// Suppress React DevTools message in development
+try { (window as any).__REACT_DEVTOOLS_GLOBAL_HOOK__!.isDisabled = true; } catch(e) {}
+
 async function api(path: string, opts: any = {}){
   try{
     const API_BASE = (import.meta as any).env?.VITE_API_URL || `http://${window.location.hostname}:8000`;
-    const res = await fetch(`${API_BASE}${path}`, opts)
+    const res = await fetch(`${API_BASE}${path}`, { cache: 'no-store', ...opts })
     if(!res.ok){
       const text = await res.text().catch(()=>null)
       throw new Error(`HTTP ${res.status}: ${text}`)
@@ -17,6 +22,79 @@ async function api(path: string, opts: any = {}){
 
 const AUTH_BASE = (import.meta as any).env?.VITE_AUTH_URL || `http://${window.location.hostname}:8400`;
 
+async function authRequest(path: string, opts: RequestInit = {}) {
+  const res = await fetch(`${AUTH_BASE}${path}`, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(opts.headers || {}),
+    },
+  });
+  const text = await res.text().catch(() => '');
+  let parsed: any = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch (e) {
+    parsed = null;
+  }
+  if (!res.ok) {
+    const detail = parsed?.detail;
+    const details = Array.isArray(detail?.errors) ? detail.errors.filter(Boolean) : [];
+    const message = typeof parsed?.detail === 'string'
+      ? parsed.detail
+      : typeof detail?.message === 'string'
+        ? (details.length ? `${detail.message}: ${details.join('; ')}` : detail.message)
+        : text || `HTTP ${res.status}`;
+    const error: any = new Error(message);
+    error.status = res.status;
+    error.payload = parsed;
+    throw error;
+  }
+  return parsed;
+}
+
+function extractAuthError(error: any): string {
+  const raw = error?.message || String(error || '');
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.detail === 'string') return parsed.detail;
+    if (typeof parsed?.detail?.message === 'string') {
+      const errors = Array.isArray(parsed?.detail?.errors) ? parsed.detail.errors.filter(Boolean) : [];
+      return errors.length ? `${parsed.detail.message}: ${errors.join('; ')}` : parsed.detail.message;
+    }
+  } catch (e) {}
+  return raw;
+}
+
+function getPasswordHints(password: string): string[] {
+  const value = password || '';
+  return [
+    'Минимум 8 символов',
+    'Хотя бы одна заглавная буква',
+    'Хотя бы одна строчная буква',
+    'Хотя бы одна цифра',
+    'Хотя бы один специальный символ',
+  ].filter((hint) => {
+    if (hint === 'Минимум 8 символов') return value.length < 8;
+    if (hint === 'Хотя бы одна заглавная буква') return !/[A-ZА-Я]/.test(value);
+    if (hint === 'Хотя бы одна строчная буква') return !/[a-zа-я]/.test(value);
+    if (hint === 'Хотя бы одна цифра') return !/\d/.test(value);
+    if (hint === 'Хотя бы один специальный символ') return !/[^A-Za-zА-Яа-я0-9]/.test(value);
+    return false;
+  });
+}
+
+function getPasswordRequirements(password: string) {
+  const value = password || '';
+  return [
+    { text: 'Минимум 8 символов', met: value.length >= 8 },
+    { text: 'Хотя бы одна заглавная буква', met: /[A-ZА-Я]/.test(value) },
+    { text: 'Хотя бы одна строчная буква', met: /[a-zа-я]/.test(value) },
+    { text: 'Хотя бы одна цифра', met: /\d/.test(value) },
+    { text: 'Хотя бы один специальный символ', met: /[^A-Za-zА-Яа-я0-9]/.test(value) },
+  ];
+}
+
 
 function Dashboard() {
   // simple localStorage helpers
@@ -26,10 +104,31 @@ function Dashboard() {
   const [authReady, setAuthReady] = useState<boolean>(false);
   const [authToken, setAuthToken] = useState<string | null>(() => lsGet('auth_token'));
   const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<string | null>(null);
   const [loginUsername, setLoginUsername] = useState<string>('');
   const [loginPassword, setLoginPassword] = useState<string>('');
   const [loginBusy, setLoginBusy] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [registerUsername, setRegisterUsername] = useState<string>('');
+  const [registerEmail, setRegisterEmail] = useState<string>('');
+  const [registerPassword, setRegisterPassword] = useState<string>('');
+  const [registerConfirmPassword, setRegisterConfirmPassword] = useState<string>('');
+  const [registerBusy, setRegisterBusy] = useState<boolean>(false);
+  const [registerError, setRegisterError] = useState<string | null>(null);
+  const [registerMessage, setRegisterMessage] = useState<string | null>(null);
+  const [forgotEmail, setForgotEmail] = useState<string>('');
+  const [forgotBusy, setForgotBusy] = useState<boolean>(false);
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null);
+  const [pendingResetToken, setPendingResetToken] = useState<string | null>(null);
+  const [resetPassword, setResetPassword] = useState<string>('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState<string>('');
+  const [resetBusy, setResetBusy] = useState<boolean>(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+  
 
   const [site, setSite] = useState<string>(() => lsGet('site') || "");
   const [days, setDays] = useState<number>(() => { const v = lsGet('days'); return v ? Number(v) : 1 });
@@ -68,6 +167,9 @@ function Dashboard() {
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const [format, setFormat] = useState<string>(() => lsGet('format') || 'csv');
   const [exporting, setExporting] = useState<boolean>(false);
+  const [generating, setGenerating] = useState<boolean>(false);
+  const [demoCount, setDemoCount] = useState<number>(200);
+  const generatingAbortRef = React.useRef<AbortController | null>(null);
   const isAdmin = !!(currentUser && (currentUser.is_admin || currentUser.role === 'admin'));
   const inAdminPanel = isAdmin && showAdmin;
 
@@ -84,18 +186,17 @@ function Dashboard() {
 
   function formatLoginError(errorMessage: string): string {
     if (!errorMessage) return '';
-    
-    // Try to parse JSON error
     try {
       const parsed = JSON.parse(errorMessage);
-      if (parsed?.detail) {
+      if (typeof parsed?.detail === 'string') {
         errorMessage = parsed.detail;
+      } else if (typeof parsed?.detail?.message === 'string') {
+        const details = Array.isArray(parsed?.detail?.errors) ? parsed.detail.errors.filter(Boolean) : [];
+        errorMessage = details.length ? `${parsed.detail.message}: ${details.join('; ')}` : parsed.detail.message;
       }
     } catch (e) {
-      // Not JSON, use as is
     }
-    
-    // Replace technical messages with user-friendly Russian text
+
     const lower = errorMessage.toLowerCase();
     if (lower.includes('invalid credentials') || lower.includes('invalid') || lower.includes('unauthorized')) {
       return 'Неверный логин или пароль';
@@ -103,13 +204,112 @@ function Dashboard() {
     if (lower.includes('blocked') || lower.includes('заблокирован')) {
       return 'Ваш аккаунт заблокирован';
     }
+    if (lower.includes('email not verified') || lower.includes('verify your email')) {
+      return 'Электронная почта не подтверждена';
+    }
+    if (lower.includes('too many login attempts')) {
+      return 'Слишком много попыток входа. Попробуйте позже';
+    }
+    if (lower.includes('weak password')) {
+      return 'Пароль не соответствует требованиям';
+    }
     if (lower.includes('missing auth') || lower.includes('no token')) {
       return 'Требуется авторизация';
     }
-    
-    // Return original message if no match
     return errorMessage;
   }
+
+  async function handleRegister(e: React.FormEvent){
+    e.preventDefault();
+    setRegisterError(null);
+    setRegisterMessage(null);
+    setAuthNotice(null);
+    setRegisterBusy(true);
+    try{
+      const username = registerUsername.trim();
+      const email = registerEmail.trim();
+      if(!username || !email || !registerPassword || !registerConfirmPassword){
+        throw new Error('Заполните все поля регистрации');
+      }
+      if(registerPassword !== registerConfirmPassword){
+        throw new Error('Пароли не совпадают');
+      }
+      const data = await authRequest('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ username, email, password: registerPassword }),
+      });
+      const message = data?.message || 'Регистрация завершена. Проверьте почту.';
+      setRegisterMessage(message);
+      setAuthNotice(message);
+      setAuthMode('login');
+      setLoginUsername(username);
+      setLoginPassword('');
+      setRegisterPassword('');
+      setRegisterConfirmPassword('');
+    }catch(err:any){
+      setRegisterError(extractAuthError(err));
+    }finally{
+      setRegisterBusy(false);
+    }
+  }
+
+  async function handleForgotPassword(e: React.FormEvent){
+    e.preventDefault();
+    setForgotError(null);
+    setForgotMessage(null);
+    setForgotBusy(true);
+    try{
+      const email = forgotEmail.trim();
+      if(!email){
+        throw new Error('Введите email');
+      }
+      const data = await authRequest('/auth/password-reset/request', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+      setForgotMessage(data?.message || 'Если аккаунт найден, письмо отправлено.');
+    }catch(err:any){
+      setForgotError(extractAuthError(err));
+    }finally{
+      setForgotBusy(false);
+    }
+  }
+
+  async function handleConfirmReset(e: React.FormEvent){
+    e.preventDefault();
+    setResetError(null);
+    setResetMessage(null);
+    setResetBusy(true);
+    try{
+      if(!pendingResetToken){
+        throw new Error('Токен сброса не найден');
+      }
+      if(!resetPassword || !resetConfirmPassword){
+        throw new Error('Введите новый пароль');
+      }
+      if(resetPassword !== resetConfirmPassword){
+        throw new Error('Пароли не совпадают');
+      }
+      const data = await authRequest('/auth/password-reset/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ token: pendingResetToken, password: resetPassword }),
+      });
+      const message = data?.message || 'Пароль изменён. Теперь войдите заново.';
+      setResetMessage(message);
+      setAuthNotice(message);
+      setAuthMode('login');
+      setPendingResetToken(null);
+      setResetPassword('');
+      setResetConfirmPassword('');
+      setLoginPassword('');
+    }catch(err:any){
+      setResetError(extractAuthError(err));
+    }finally{
+      setResetBusy(false);
+    }
+  }
+
+  
 
   async function handleLogin(e: React.FormEvent){
     e.preventDefault();
@@ -120,16 +320,10 @@ function Dashboard() {
       if(!username || !loginPassword){
         throw new Error('Введите username и password');
       }
-      const res = await fetch(`${AUTH_BASE}/auth/login`, {
+      const data = await authRequest('/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password: loginPassword }),
       });
-      if(!res.ok){
-        const text = await res.text().catch(()=>null);
-        throw new Error(text || `HTTP ${res.status}`);
-      }
-      const data = await res.json();
       if(!data?.access_token){
         throw new Error('Не получен access token');
       }
@@ -139,7 +333,7 @@ function Dashboard() {
       setCurrentUser(me);
       setLoginPassword('');
     }catch(err:any){
-      setLoginError(err?.message || String(err));
+      setLoginError(extractAuthError(err));
     }finally{
       setLoginBusy(false);
       setAuthReady(true);
@@ -153,6 +347,12 @@ function Dashboard() {
     setShowAdmin(false);
     setShowHelp(false);
     setLoginError(null);
+    setRegisterError(null);
+    setForgotError(null);
+    setResetError(null);
+    setAuthNotice(null);
+    setVerificationStatus(null);
+    setAuthMode('login');
   }
 
   useEffect(() => {
@@ -169,12 +369,40 @@ function Dashboard() {
     try{
       const params = new URLSearchParams(window.location.search);
       const queryToken = params.get('token');
+      const verifyEmailToken = params.get('verify_email_token');
+      const resetToken = params.get('reset_token');
       if(queryToken){
         initialToken = queryToken;
         lsSet('auth_token', queryToken);
         setAuthToken(queryToken);
         const url = new URL(window.location.href);
         url.searchParams.delete('token');
+        window.history.replaceState({}, '', url.toString());
+      }
+      if (verifyEmailToken) {
+        setVerificationStatus('Подтверждаем электронную почту...');
+        void (async () => {
+          try {
+            const data = await authRequest('/auth/verify-email', {
+              method: 'POST',
+              body: JSON.stringify({ token: verifyEmailToken }),
+            });
+            setVerificationStatus(data?.message || 'Электронная почта подтверждена. Теперь можно войти.');
+          } catch (err: any) {
+            setVerificationStatus(extractAuthError(err));
+          } finally {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('verify_email_token');
+            window.history.replaceState({}, '', url.toString());
+            setAuthReady(true);
+          }
+        })();
+      }
+      if (resetToken) {
+        setPendingResetToken(resetToken);
+        setAuthMode('reset');
+        const url = new URL(window.location.href);
+        url.searchParams.delete('reset_token');
         window.history.replaceState({}, '', url.toString());
       }
     }catch(e){}
@@ -210,6 +438,9 @@ function Dashboard() {
   const siteChangeTimerRef = React.useRef<number | null>(null);
   // Ref to hold latest site value so WS messages and debounced loader use current site
   const latestSiteRef = React.useRef<string>(site);
+  const latestDaysRef = React.useRef<number>(days);
+  const loadRequestIdRef = React.useRef<number>(0);
+  const wsRefreshTimerRef = React.useRef<number | null>(null);
 
   // Debounced site change handler: update state and schedule load
   function handleSiteChange(newSite: string){
@@ -232,15 +463,21 @@ function Dashboard() {
 
     if(siteChangeTimerRef.current) window.clearTimeout(siteChangeTimerRef.current);
     siteChangeTimerRef.current = window.setTimeout(()=>{
-      try{ load({site: latestSiteRef.current}); }catch(e){}
+      try{ load({site: latestSiteRef.current, days: latestDaysRef.current}); }catch(e){}
       siteChangeTimerRef.current = null;
     }, 350);
   }
 
   // Cleanup timer on unmount
-  useEffect(() => { return () => { if(siteChangeTimerRef.current) window.clearTimeout(siteChangeTimerRef.current); } }, []);
+  useEffect(() => {
+    return () => {
+      if(siteChangeTimerRef.current) window.clearTimeout(siteChangeTimerRef.current);
+      if(wsRefreshTimerRef.current) window.clearTimeout(wsRefreshTimerRef.current);
+    }
+  }, []);
 
   async function load(overrides?: {site?:string, days?:number, timezone?:string}) {
+    const requestId = ++loadRequestIdRef.current;
     setError(null);
     try {
       const useDays = overrides?.days ?? days;
@@ -254,6 +491,7 @@ function Dashboard() {
         api(`/api/analytics/sessions?days=${useDays}&site_id=${encodeURIComponent(useSite)}`),
         api(`/api/analytics/campaigns?days=${useDays}&limit=10&site_id=${encodeURIComponent(useSite)}`),
       ]);
+      if (requestId !== loadRequestIdRef.current) return;
       setTopPages(tp || []);
       
       try{
@@ -275,6 +513,7 @@ function Dashboard() {
       setSessions(ss || null);
   setCampaigns(cp || []);
     } catch (e: any) {
+      if (requestId !== loadRequestIdRef.current) return;
       setError(String(e));
     }
   }
@@ -288,6 +527,7 @@ function Dashboard() {
 
   // keep latestSiteRef in sync with site changes (covers programmatic setSite and localStorage init)
   useEffect(() => { latestSiteRef.current = site; }, [site]);
+  useEffect(() => { latestDaysRef.current = days; }, [days]);
 
   useEffect(() => {
     if(!authToken) return;
@@ -298,13 +538,28 @@ function Dashboard() {
       const normalizedHost = (host === '0.0.0.0' || host === '') ? 'localhost' : host;
       const url = `ws://${normalizedHost}:8700/ws`;
       ws = new WebSocket(url);
-      // Call load immediately on each WS message (no debounce)
-      ws.onmessage = (ev) => { try{ if((latestSiteRef.current||'').trim()) load({site: latestSiteRef.current}); }catch(e){} }
+      // Throttle realtime-driven refreshes so UI remains responsive during heavy event streams.
+      ws.onmessage = (_ev) => {
+        try{
+          if(!(latestSiteRef.current||'').trim()) return;
+          if(wsRefreshTimerRef.current !== null) return;
+          wsRefreshTimerRef.current = window.setTimeout(()=>{
+            wsRefreshTimerRef.current = null;
+            try{ load({site: latestSiteRef.current, days: latestDaysRef.current}); }catch(e){}
+          }, 250);
+        }catch(e){}
+      }
       ws.onopen = () => { console.info('Realtime WS connected', url); setWsConnected(true); }
       ws.onclose = () => { console.info('Realtime WS closed'); setWsConnected(false); }
       ws.onerror = (e) => { console.warn('Realtime WS error', e); setWsConnected(false); }
     }catch(e){ console.warn('Failed to connect realtime ws', e) }
-    return () => { if(ws) try{ ws.close() }catch(e){} }
+    return () => {
+      if(wsRefreshTimerRef.current) {
+        window.clearTimeout(wsRefreshTimerRef.current);
+        wsRefreshTimerRef.current = null;
+      }
+      if(ws) try{ ws.close() }catch(e){}
+    }
   }, [authToken]);
 
   
@@ -548,46 +803,147 @@ function Dashboard() {
           <div className="hero-card">
             <div className="hero-left">
               <div className="brand-big">WebAnalyzer</div>
-              <h1 className="hero-title">Sign in</h1>
-              <p className="hero-desc">Use your account to access the dashboard.</p>
+              <h1 className="hero-title">
+                {authMode === 'register' ? 'Создать аккаунт' : authMode === 'forgot' ? 'Сбросить пароль' : authMode === 'reset' ? 'Новый пароль' : 'Войти в систему'}
+              </h1>
+              <p className="hero-desc">
+                {authMode === 'register'
+                  ? 'Зарегистрируйте аккаунт, подтвердите email и получите доступ к аналитике.'
+                  : authMode === 'forgot'
+                    ? 'Запросите ссылку для восстановления пароля на почту.'
+                    : authMode === 'reset'
+                      ? 'Введите новый пароль по ссылке из письма.'
+                      : 'Используйте свой аккаунт для доступа к аналитике.'}
+              </p>
+              {verificationStatus && <div className="auth-banner auth-banner--info">{verificationStatus}</div>}
+              {authNotice && <div className="auth-banner auth-banner--success">{authNotice}</div>}
             </div>
             <div className="hero-right">
-              <form onSubmit={handleLogin} className="hero-form">
-                <div className={`field ${(loginUsername || '').trim() ? 'filled' : ''}`}>
-                  <input
-                    className="hero-input"
-                    id="frontend-login-username"
-                    value={loginUsername}
-                    onChange={(e)=>setLoginUsername(e.target.value)}
-                    autoComplete="username"
-                    disabled={loginBusy}
-                  />
-                  <label htmlFor="frontend-login-username">Username</label>
-                </div>
-
-                <div className={`field ${(loginPassword || '').trim() ? 'filled' : ''}`}>
-                  <input
-                    className="hero-input"
-                    id="frontend-login-password"
-                    type="password"
-                    value={loginPassword}
-                    onChange={(e)=>setLoginPassword(e.target.value)}
-                    autoComplete="current-password"
-                    disabled={loginBusy}
-                  />
-                  <label htmlFor="frontend-login-password">Password</label>
-                </div>
-
-                {loginError && (
-                  <div style={{color: '#b91c1c', fontSize: '13px', marginTop: '8px'}}>
-                    {formatLoginError(loginError)}
+              {authMode === 'login' && (
+                <form onSubmit={handleLogin} className="hero-form">
+                  <div className={`field ${(loginUsername || '').trim() ? 'filled' : ''}`}>
+                    <input className="hero-input" id="frontend-login-username" value={loginUsername} onChange={(e)=>setLoginUsername(e.target.value)} autoComplete="username" disabled={loginBusy} />
+                    <label htmlFor="frontend-login-username">Username</label>
                   </div>
-                )}
 
-                <div className="hero-cta">
-                  <button className="btn large" type="submit" disabled={loginBusy}>{loginBusy ? 'Signing in...' : 'Sign in'}</button>
-                </div>
-              </form>
+                  <div className={`field ${(loginPassword || '').trim() ? 'filled' : ''}`}>
+                    <input className="hero-input" id="frontend-login-password" type="password" value={loginPassword} onChange={(e)=>setLoginPassword(e.target.value)} autoComplete="current-password" disabled={loginBusy} />
+                    <label htmlFor="frontend-login-password">Password</label>
+                  </div>
+
+                  {loginError && <div className="auth-error">{formatLoginError(loginError)}</div>}
+
+                  <div className="hero-links">
+                    <button className="text-link" type="button" onClick={()=>setAuthMode('forgot')}>Забыли пароль?</button>
+                    <button className="text-link" type="button" onClick={()=>setAuthMode('register')}>Нет аккаунта? Зарегистрироваться</button>
+                  </div>
+
+                  <div className="hero-cta">
+                    <button className="btn large" type="submit" disabled={loginBusy}>{loginBusy ? 'Входим...' : 'Войти'}</button>
+                  </div>
+                </form>
+              )}
+
+              {authMode === 'register' && (
+                <form onSubmit={handleRegister} className="hero-form">
+                  <div className={`field ${(registerUsername || '').trim() ? 'filled' : ''}`}>
+                    <input className="hero-input" id="frontend-register-username" value={registerUsername} onChange={(e)=>setRegisterUsername(e.target.value)} autoComplete="username" disabled={registerBusy} />
+                    <label htmlFor="frontend-register-username">Username</label>
+                  </div>
+
+                  <div className={`field ${(registerEmail || '').trim() ? 'filled' : ''}`}>
+                    <input className="hero-input" id="frontend-register-email" type="email" value={registerEmail} onChange={(e)=>setRegisterEmail(e.target.value)} autoComplete="email" disabled={registerBusy} />
+                    <label htmlFor="frontend-register-email">Email</label>
+                  </div>
+
+                  <div className={`field ${(registerPassword || '').trim() ? 'filled' : ''}`}>
+                    <input className="hero-input" id="frontend-register-password" type="password" value={registerPassword} onChange={(e)=>setRegisterPassword(e.target.value)} autoComplete="new-password" disabled={registerBusy} />
+                    <label htmlFor="frontend-register-password">Password</label>
+                  </div>
+
+                  <div className={`field ${(registerConfirmPassword || '').trim() ? 'filled' : ''}`}>
+                    <input className="hero-input" id="frontend-register-confirm" type="password" value={registerConfirmPassword} onChange={(e)=>setRegisterConfirmPassword(e.target.value)} autoComplete="new-password" disabled={registerBusy} />
+                    <label htmlFor="frontend-register-confirm">Repeat password</label>
+                  </div>
+
+                  <div className="password-hints">
+                    {getPasswordHints(registerPassword).length === 0 ? (
+                      <div className="password-hints__ok">✓ Пароль подходит</div>
+                    ) : (
+                      getPasswordRequirements(registerPassword).map((req) => (
+                        <div key={req.text} className={`password-hints__item ${req.met ? 'password-hints__item--met' : ''}`}>
+                          <span className="password-hints__icon">{req.met ? '✓' : '✕'}</span>
+                          {req.text}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {registerError && <div className="auth-error">{formatLoginError(registerError)}</div>}
+                  {registerMessage && <div className="auth-banner auth-banner--success">{registerMessage}</div>}
+
+                  <div className="hero-links">
+                    <button className="text-link" type="button" onClick={()=>setAuthMode('login')}>Уже есть аккаунт? Войти</button>
+                  </div>
+
+                  <div className="hero-cta">
+                    <button className="btn large" type="submit" disabled={registerBusy}>{registerBusy ? 'Создаём...' : 'Зарегистрироваться'}</button>
+                  </div>
+                </form>
+              )}
+
+              {authMode === 'forgot' && (
+                <form onSubmit={handleForgotPassword} className="hero-form">
+                  <div className={`field ${(forgotEmail || '').trim() ? 'filled' : ''}`}>
+                    <input className="hero-input" id="frontend-forgot-email" type="email" value={forgotEmail} onChange={(e)=>setForgotEmail(e.target.value)} autoComplete="email" disabled={forgotBusy} />
+                    <label htmlFor="frontend-forgot-email">Email</label>
+                  </div>
+
+                  {forgotError && <div className="auth-error">{formatLoginError(forgotError)}</div>}
+                  {forgotMessage && <div className="auth-banner auth-banner--success">{forgotMessage}</div>}
+
+                  <div className="hero-links">
+                    <button className="text-link" type="button" onClick={()=>setAuthMode('login')}>Вернуться ко входу</button>
+                  </div>
+
+                  <div className="hero-cta">
+                    <button className="btn large" type="submit" disabled={forgotBusy}>{forgotBusy ? 'Отправляем...' : 'Отправить ссылку'}</button>
+                  </div>
+                </form>
+              )}
+
+              {authMode === 'reset' && (
+                <form onSubmit={handleConfirmReset} className="hero-form">
+                  <div className={`field ${(resetPassword || '').trim() ? 'filled' : ''}`}>
+                    <input className="hero-input" id="frontend-reset-password" type="password" value={resetPassword} onChange={(e)=>setResetPassword(e.target.value)} autoComplete="new-password" disabled={resetBusy} />
+                    <label htmlFor="frontend-reset-password">New password</label>
+                  </div>
+
+                  <div className={`field ${(resetConfirmPassword || '').trim() ? 'filled' : ''}`}>
+                    <input className="hero-input" id="frontend-reset-confirm" type="password" value={resetConfirmPassword} onChange={(e)=>setResetConfirmPassword(e.target.value)} autoComplete="new-password" disabled={resetBusy} />
+                    <label htmlFor="frontend-reset-confirm">Repeat password</label>
+                  </div>
+
+                  <div className="password-hints">
+                    {getPasswordHints(resetPassword).length === 0 ? (
+                      <div className="password-hints__ok">Пароль подходит</div>
+                    ) : (
+                      getPasswordHints(resetPassword).map((hint) => <div key={hint} className="password-hints__item">{hint}</div>)
+                    )}
+                  </div>
+
+                  {resetError && <div className="auth-error">{formatLoginError(resetError)}</div>}
+                  {resetMessage && <div className="auth-banner auth-banner--success">{resetMessage}</div>}
+
+                  <div className="hero-links">
+                    <button className="text-link" type="button" onClick={()=>setAuthMode('login')}>Вернуться ко входу</button>
+                  </div>
+
+                  <div className="hero-cta">
+                    <button className="btn large" type="submit" disabled={resetBusy || !pendingResetToken}>{resetBusy ? 'Сохраняем...' : 'Сменить пароль'}</button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </section>
@@ -629,7 +985,7 @@ function Dashboard() {
             placeholder="site ID" />
 
           <div className="period-label">Period:</div>
-          <select value={days} onChange={e=>{ const v = Number(e.target.value); setDays(v); load({days:v}); }}>
+          <select value={days} onChange={e=>{ const v = Number(e.target.value); setDays(v); latestDaysRef.current = v; load({days:v, site: latestSiteRef.current}); }}>
             <option value={1}>Last 1 day</option>
             <option value={7}>Last 7 days</option>
             <option value={30}>Last 30 days</option>
@@ -685,8 +1041,69 @@ function Dashboard() {
                     alert('Export failed: '+String(e));
                   }finally{ setExporting(false) }
                 }} >Export</button>
+                
+                {isAdmin && (
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <label className="timezone-label">Demo events:</label>
+                  <input 
+                    type="number" 
+                    min="1" 
+                    max="10000" 
+                    value={demoCount}
+                    onChange={(e)=>setDemoCount(Math.max(1, Number(e.target.value) || 1))}
+                    style={{padding:'6px',borderRadius:'6px',border:'1px solid #ddd',fontSize:'14px',fontWeight:400,color:'#0f172a',background:'white'}}
+                    disabled={generating}
+                  />
+                  <button className="btn" onClick={async ()=>{
+                    const siteId = (site || '').trim();
+                    if(siteId !== 'example') { alert('Demo traffic can only be generated for site_id="example"'); return; }
+                    
+                    if(generating) {
+                      try{
+                        const host = window.location.hostname || 'localhost';
+                        await fetch(`http://${host}:8000/api/admin/stop-demo-traffic`, {
+                          method: 'POST',
+                          headers: {'Content-Type': 'application/json'},
+                          body: JSON.stringify({site_id: siteId})
+                        });
+                      }catch(e){
+                        console.error('Stop demo traffic failed', e);
+                      }finally{
+                        if(generatingAbortRef.current) generatingAbortRef.current.abort();
+                        setGenerating(false);
+                      }
+                      return;
+                    }
+                    
+                    try{
+                      setGenerating(true);
+                      generatingAbortRef.current = new AbortController();
+                      const host = window.location.hostname || 'localhost';
+                      const res = await fetch(`http://${host}:8000/api/admin/generate-demo-traffic`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}`},
+                        // Generate across a wider window so 1/7/30 period switching is visibly different.
+                        body: JSON.stringify({site_id: siteId, count: demoCount, days: 30}),
+                        signal: generatingAbortRef.current.signal
+                      });
+                      if(!res.ok) {
+                        const errData = await res.text().catch(()=>'Unknown error');
+                        throw new Error(`HTTP ${res.status}: ${errData}`);
+                      }
+                      const data = await res.json();
+                      setTimeout(()=>{ try{ load({site: siteId, days: latestDaysRef.current}); }catch(e){} }, 500);
+                    }catch(e){
+                      if((e as any).name !== 'AbortError') {
+                        console.error('Generate demo traffic failed', e);
+                        alert('Failed to generate demo traffic: '+String(e));
+                      }
+                    }finally{ setGenerating(false); generatingAbortRef.current = null; }
+                  }} >{generating ? 'Stop' : 'Generate'}</button>
+                </div>
+                )}
               </div>
 
+              {isAdmin && (
               <div style={{marginLeft:'auto'}}>
                 <button
                   className="btn btn--danger"
@@ -708,6 +1125,8 @@ function Dashboard() {
                       setBrowsers([]);
                       setSessions(null);
                       setCampaigns([]);
+                      // Ensure widgets stay synced with the currently selected period after clear.
+                      try{ await load({site: siteId, days: latestDaysRef.current}); }catch(e){}
                     }catch(e){
                       console.error('clear-site failed', e);
                       alert('Clear failed: '+String(e));
@@ -715,6 +1134,7 @@ function Dashboard() {
                   }}
                 >Clear site data</button>
               </div>
+              )}
             </div>
         </div>
         {error && <div style={{color:'red',marginTop:8}}>Error: {error}</div>}
@@ -725,6 +1145,7 @@ function Dashboard() {
       )}
 
       {inAdminPanel && <AdminPanel />}
+
 
       {showHelp && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:60}} onClick={()=>setShowHelp(false)}>

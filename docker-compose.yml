@@ -16,6 +16,8 @@ services:
       - db
     ports:
       - "8000:8000"
+    volumes:
+      - ./tools:/tools:ro
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/webanalyzer
     healthcheck:
@@ -29,6 +31,17 @@ services:
     build: ./frontend
     ports:
       - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_AUTH_URL: http://localhost:8400
+      VITE_REALTIME_HOST: localhost
+
+  local-site:
+    build: ./local-site
+    ports:
+      - "5500:8000"
+    volumes:
+      - ./local-site:/site
 
   realtime:
     build: ./realtime
@@ -85,10 +98,22 @@ services:
       - "8400:8400"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/webanalyzer
+      FRONTEND_URL: http://localhost:5173
       # Set an admin user (created on first startup if missing)
       AUTH_ADMIN_USER: "admin"
       AUTH_ADMIN_PASSWORD: "admin"
       AUTH_SECRET: "change-me-secret"
+      AUTH_LOGIN_MAX_ATTEMPTS: "5"
+      AUTH_LOGIN_LOCK_MINUTES: "15"
+      AUTH_EMAIL_VERIFICATION_TTL_MINUTES: "1440"
+      AUTH_PASSWORD_RESET_TTL_MINUTES: "60"
+      AUTH_MIN_PASSWORD_LENGTH: "8"
+      AUTH_SMTP_HOST: ""
+      AUTH_SMTP_PORT: "587"
+      AUTH_SMTP_USER: ""
+      AUTH_SMTP_PASSWORD: ""
+      AUTH_SMTP_FROM: "no-reply@example.com"
+      AUTH_SMTP_USE_TLS: "1"
 
 volumes:
   pgdata:

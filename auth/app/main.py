@@ -1,7 +1,12 @@
-import os
+import hashlib
 import json
+import os
+import re
+import secrets
+import smtplib
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 from typing import Any, Dict, Optional
 
 import httpx
@@ -13,7 +18,7 @@ from sqlalchemy import or_, text
 from sqlmodel import Session, delete, func, select
 
 from .database import engine, init_db
-from .models import ActivityLog, User
+from .models import ActivityLog, LoginThrottle, User
 from .security import create_access_token, decode_access_token, hash_password, verify_password
 
 
@@ -21,10 +26,21 @@ ADMIN_USER = os.environ.get("AUTH_ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.environ.get("AUTH_ADMIN_PASSWORD", "admin")
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 REALTIME_NOTIFY_URL = os.environ.get("REALTIME_NOTIFY_URL", "http://realtime:8700/notify")
+SMTP_HOST = os.environ.get("AUTH_SMTP_HOST", "").strip()
+SMTP_PORT = int(os.environ.get("AUTH_SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("AUTH_SMTP_USER", "").strip()
+SMTP_PASSWORD = os.environ.get("AUTH_SMTP_PASSWORD", "").strip()
+SMTP_FROM = os.environ.get("AUTH_SMTP_FROM", SMTP_USER or "no-reply@example.com").strip()
+SMTP_USE_TLS = os.environ.get("AUTH_SMTP_USE_TLS", "1").strip() not in {"0", "false", "False"}
 
 DEFAULT_ROLE = "viewer"
 ALLOWED_ROLES = {"admin", "analyst", "viewer"}
 ADMIN_ASSIGNABLE_ROLES = {"viewer", "analyst"}
+LOGIN_MAX_ATTEMPTS = int(os.environ.get("AUTH_LOGIN_MAX_ATTEMPTS", "5"))
+LOGIN_LOCK_MINUTES = int(os.environ.get("AUTH_LOGIN_LOCK_MINUTES", "15"))
+EMAIL_VERIFICATION_TTL_MINUTES = int(os.environ.get("AUTH_EMAIL_VERIFICATION_TTL_MINUTES", "1440"))
+PASSWORD_RESET_TTL_MINUTES = int(os.environ.get("AUTH_PASSWORD_RESET_TTL_MINUTES", "60"))
+MIN_PASSWORD_LENGTH = int(os.environ.get("AUTH_MIN_PASSWORD_LENGTH", "8"))
 
 SERVICE_HEALTH_URLS = {
     "auth": os.environ.get("AUTH_HEALTH_URL", "http://auth:8400/health"),
@@ -90,6 +106,40 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class MessageResponse(BaseModel):
+    message: str
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: Optional[str] = None
+    username: Optional[str] = None
+
+
+class PasswordResetRequest(BaseModel):
+    email: Optional[str] = None
+    username: Optional[str] = None
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str
+    password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
 def normalize_role(role: Optional[str]) -> str:
     role_value = (role or DEFAULT_ROLE).strip().lower()
     if role_value not in ALLOWED_ROLES:
@@ -101,6 +151,188 @@ def ensure_admin_assignable_role(role_value: str) -> None:
     if role_value not in ADMIN_ASSIGNABLE_ROLES:
         raise HTTPException(status_code=403, detail="Admin can only assign viewer/analyst roles")
 
+
+def normalize_username(value: str) -> str:
+    return (value or "").strip()
+
+
+def normalize_email(value: Optional[str]) -> str:
+    return (value or "").strip().lower()
+
+
+def generate_secret_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def hash_secret_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def build_frontend_link(param_name: str, token: str) -> str:
+    base = FRONTEND_URL.rstrip("/")
+    return f"{base}/?{param_name}={token}"
+
+
+def send_email_message(to_email: str, subject: str, body: str) -> None:
+    recipient = normalize_email(to_email)
+    if not recipient:
+        return
+
+    if not SMTP_HOST:
+        print(f"[auth-email] To: {recipient}\nSubject: {subject}\n{body}")
+
+        return
+
+    message = EmailMessage()
+    message["From"] = SMTP_FROM
+    message["To"] = recipient
+    message["Subject"] = subject
+    message.set_content(body)
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as smtp:
+        if SMTP_USE_TLS:
+            smtp.starttls()
+        if SMTP_USER:
+            smtp.login(SMTP_USER, SMTP_PASSWORD)
+        smtp.send_message(message)
+
+
+def password_strength_errors(password: str) -> list[str]:
+    errors: list[str] = []
+    if len(password or "") < MIN_PASSWORD_LENGTH:
+        errors.append(f"Пароль должен быть не короче {MIN_PASSWORD_LENGTH} символов")
+    if not re.search(r"[a-zа-я]", password or "", re.IGNORECASE):
+        errors.append("Пароль должен содержать буквы")
+    if not re.search(r"[A-ZА-Я]", password or ""):
+        errors.append("Пароль должен содержать хотя бы одну заглавную букву")
+    if not re.search(r"\d", password or ""):
+        errors.append("Пароль должен содержать хотя бы одну цифру")
+    if not re.search(r"[^A-Za-zА-Яа-я0-9]", password or ""):
+        errors.append("Пароль должен содержать хотя бы один специальный символ")
+    return errors
+
+
+def require_strong_password(password: str) -> None:
+    errors = password_strength_errors(password)
+    if errors:
+        raise HTTPException(status_code=400, detail={"message": "Weak password", "errors": errors})
+
+
+def issue_email_verification_token(user: User) -> str:
+    token = generate_secret_token()
+    user.email_verified = False
+    user.email_verification_token_hash = hash_secret_token(token)
+    user.email_verification_sent_at = datetime.utcnow()
+    user.email_verified_at = None
+    return token
+
+
+def issue_password_reset_token(user: User) -> str:
+    token = generate_secret_token()
+    user.password_reset_token_hash = hash_secret_token(token)
+    user.password_reset_sent_at = datetime.utcnow()
+    return token
+
+
+def send_verification_email(user: User, token: str) -> None:
+    if not user.email:
+        return
+    link = build_frontend_link("verify_email_token", token)
+    send_email_message(
+        user.email,
+        "Подтверждение электронной почты",
+        (
+            f"Здравствуйте, {user.username}!\n\n"
+            f"Подтвердите электронную почту по ссылке:\n{link}\n\n"
+            "Если вы не создавали аккаунт, просто игнорируйте это письмо."
+        ),
+    )
+
+
+def send_password_reset_email(user: User, token: str) -> None:
+    if not user.email:
+        return
+    link = build_frontend_link("reset_token", token)
+    send_email_message(
+        user.email,
+        "Сброс пароля",
+        (
+            f"Здравствуйте, {user.username}!\n\n"
+            f"Сбросьте пароль по ссылке:\n{link}\n\n"
+            "Если вы не запрашивали сброс, просто игнорируйте это письмо."
+        ),
+    )
+
+
+def get_throttle(session: Session, key: str) -> LoginThrottle:
+    row = session.get(LoginThrottle, key)
+    if row is None:
+        row = LoginThrottle(key=key)
+        session.add(row)
+        session.flush()
+    return row
+
+
+def clear_login_failures(session: Session, *keys: str) -> None:
+    for key in keys:
+        row = session.get(LoginThrottle, key)
+        if row is None:
+            continue
+        session.delete(row)
+
+
+def register_login_failure(session: Session, *keys: str) -> None:
+    now = datetime.utcnow()
+    for key in keys:
+        if not key:
+            continue
+        row = get_throttle(session, key)
+        if row.locked_until and row.locked_until > now:
+            continue
+        row.failed_attempts = int(row.failed_attempts or 0) + 1
+        row.updated_at = now
+        if row.failed_attempts >= LOGIN_MAX_ATTEMPTS:
+            row.locked_until = now + timedelta(minutes=LOGIN_LOCK_MINUTES)
+        session.add(row)
+
+
+def assert_not_rate_limited(session: Session, *keys: str) -> None:
+    now = datetime.utcnow()
+    locked_keys = []
+    for key in keys:
+        if not key:
+            continue
+        row = session.get(LoginThrottle, key)
+        if not row:
+            continue
+        if row.locked_until and row.locked_until > now:
+            locked_keys.append(key)
+            continue
+        if row.failed_attempts >= LOGIN_MAX_ATTEMPTS:
+            locked_keys.append(key)
+    if locked_keys:
+        raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.")
+
+
+def ensure_user_email_verified(user: User) -> None:
+    if user.email and not user.email_verified:
+        raise HTTPException(status_code=403, detail="Email not verified")
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def password_reset_token_is_expired(user: User) -> bool:
+    if not user.password_reset_sent_at:
+        return True
+    return utc_now() - user.password_reset_sent_at > timedelta(minutes=PASSWORD_RESET_TTL_MINUTES)
+
+
+def email_verification_token_is_expired(user: User) -> bool:
+    if not user.email_verification_sent_at:
+        return True
+    return utc_now() - user.email_verification_sent_at > timedelta(minutes=EMAIL_VERIFICATION_TTL_MINUTES)
 
 def user_is_admin(user: User) -> bool:
     return bool(user.is_admin) or (user.role or "").lower() == "admin"
@@ -122,6 +354,7 @@ def user_to_dict(user: User) -> Dict[str, Any]:
         "email": user.email,
         "is_admin": bool(user.is_admin),
         "role": user.role,
+        "email_verified": bool(user.email_verified),
         "is_blocked": bool(user.is_blocked),
         "blocked_reason": user.blocked_reason,
         "token_version": int(user.token_version or 0),
@@ -188,6 +421,12 @@ def ensure_schema() -> None:
             """
             ALTER TABLE "user"
                 ADD COLUMN IF NOT EXISTS role text DEFAULT 'viewer',
+                ADD COLUMN IF NOT EXISTS email_verified boolean DEFAULT false,
+                ADD COLUMN IF NOT EXISTS email_verification_token_hash text,
+                ADD COLUMN IF NOT EXISTS email_verification_sent_at timestamptz NULL,
+                ADD COLUMN IF NOT EXISTS email_verified_at timestamptz NULL,
+                ADD COLUMN IF NOT EXISTS password_reset_token_hash text,
+                ADD COLUMN IF NOT EXISTS password_reset_sent_at timestamptz NULL,
                 ADD COLUMN IF NOT EXISTS is_blocked boolean DEFAULT false,
                 ADD COLUMN IF NOT EXISTS blocked_reason text,
                 ADD COLUMN IF NOT EXISTS token_version integer DEFAULT 0,
@@ -215,6 +454,27 @@ def ensure_schema() -> None:
             UPDATE "user"
                SET is_admin = CASE WHEN role = 'admin' THEN TRUE ELSE FALSE END
              WHERE is_admin IS DISTINCT FROM (role = 'admin')
+            """
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE "user"
+                   SET email_verified = TRUE,
+                       email_verified_at = COALESCE(email_verified_at, created_at)
+                 WHERE username = :admin_user
+                """
+            ),
+            {"admin_user": ADMIN_USER},
+        )
+        conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS loginthrottle (
+                key VARCHAR PRIMARY KEY,
+                failed_attempts INTEGER NOT NULL DEFAULT 0,
+                locked_until TIMESTAMPTZ NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
             """
         )
 
@@ -351,39 +611,52 @@ def on_startup() -> None:
                 hashed_password=hash_password(ADMIN_PASSWORD),
                 is_admin=True,
                 role="admin",
+                email_verified=True,
                 token_version=0,
             )
             session.add(admin)
             session.commit()
             print("Created default admin user:", ADMIN_USER)
         else:
-            changed = False
-            if not admin.is_admin:
-                admin.is_admin = True
-                changed = True
-            if admin.role != "admin":
-                admin.role = "admin"
-                changed = True
-            if changed:
-                session.add(admin)
-                session.commit()
+            admin.is_admin = True
+            admin.role = "admin"
+            admin.hashed_password = hash_password(ADMIN_PASSWORD)
+            admin.email_verified = True
+            admin.email_verified_at = admin.email_verified_at or datetime.utcnow()
+            admin.is_blocked = False
+            admin.blocked_reason = None
+            session.add(admin)
+            session.commit()
 
 
-@app.post("/auth/register", response_model=Token)
-def register(payload: UserCreate, request: Request) -> Dict[str, str]:
+@app.post("/auth/register", response_model=MessageResponse)
+def register(payload: RegisterRequest, request: Request) -> Dict[str, str]:
     with Session(engine) as session:
-        if get_user_by_username(session, payload.username):
+        username = normalize_username(payload.username)
+        email = normalize_email(payload.email)
+
+        if not username:
+            raise HTTPException(status_code=400, detail="Username is required")
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required")
+        if get_user_by_username(session, username):
             raise HTTPException(status_code=400, detail="User exists")
+        if session.exec(select(User).where(User.email == email)).first():
+            raise HTTPException(status_code=400, detail="Email exists")
+
+        require_strong_password(payload.password)
 
         user = User(
-            username=payload.username,
-            email=payload.email,
+            username=username,
+            email=email,
             hashed_password=hash_password(payload.password),
             role=DEFAULT_ROLE,
             is_admin=False,
+            email_verified=False,
             token_version=0,
         )
         session.add(user)
+        token = issue_email_verification_token(user)
         session.commit()
         session.refresh(user)
 
@@ -391,26 +664,156 @@ def register(payload: UserCreate, request: Request) -> Dict[str, str]:
             session,
             "user_registered",
             user=user,
-            details={"email": payload.email},
+            details={"email": email},
             ip=get_client_ip(request),
         )
         session.commit()
 
-        token = create_access_token(user.username, token_version=user.token_version, role=user.role)
-        return {"access_token": token}
+        send_verification_email(user, token)
+        return {"message": "Registration complete. Check your email to verify the account."}
+
+
+@app.post("/auth/verify-email", response_model=MessageResponse)
+def verify_email(payload: VerifyEmailRequest) -> Dict[str, str]:
+    token_hash = hash_secret_token((payload.token or "").strip())
+    if not token_hash:
+        raise HTTPException(status_code=400, detail="Invalid token")
+
+    with Session(engine) as session:
+        user = session.exec(
+            select(User).where(User.email_verification_token_hash == token_hash)
+        ).first()
+        if not user:
+            raise HTTPException(status_code=400, detail="Invalid or expired token")
+        if user.email_verification_sent_at and email_verification_token_is_expired(user):
+            raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+        user.email_verified = True
+        user.email_verified_at = datetime.utcnow()
+        user.email_verification_token_hash = None
+        user.email_verification_sent_at = None
+        session.add(user)
+        session.commit()
+
+        log_activity(session, "email_verified", user=user)
+        session.commit()
+
+        return {"message": "Email verified successfully"}
+
+
+@app.post("/auth/resend-verification", response_model=MessageResponse)
+def resend_verification(payload: ResendVerificationRequest) -> Dict[str, str]:
+    with Session(engine) as session:
+        user = None
+        if payload.username:
+            user = get_user_by_username(session, normalize_username(payload.username))
+        if user is None and payload.email:
+            user = session.exec(select(User).where(User.email == normalize_email(payload.email))).first()
+
+        if not user or not user.email or user.email_verified:
+            return {"message": "If the account exists, a verification email has been sent."}
+
+        token = issue_email_verification_token(user)
+        session.add(user)
+        session.commit()
+        send_verification_email(user, token)
+        return {"message": "Verification email sent"}
+
+
+@app.post("/auth/password-reset/request", response_model=MessageResponse)
+def request_password_reset(payload: PasswordResetRequest) -> Dict[str, str]:
+    with Session(engine) as session:
+        user = None
+        if payload.username:
+            user = get_user_by_username(session, normalize_username(payload.username))
+        if user is None and payload.email:
+            user = session.exec(select(User).where(User.email == normalize_email(payload.email))).first()
+
+        if not user or not user.email:
+            return {"message": "If the account exists, a reset email has been sent."}
+
+        token = issue_password_reset_token(user)
+        session.add(user)
+        session.commit()
+        send_password_reset_email(user, token)
+        log_activity(session, "password_reset_requested", user=user)
+        session.commit()
+        return {"message": "Password reset email sent"}
+
+
+@app.post("/auth/password-reset/confirm", response_model=MessageResponse)
+def confirm_password_reset(payload: PasswordResetConfirmRequest) -> Dict[str, str]:
+    require_strong_password(payload.password)
+
+    token_hash = hash_secret_token((payload.token or "").strip())
+    if not token_hash:
+        raise HTTPException(status_code=400, detail="Invalid token")
+
+    with Session(engine) as session:
+        user = session.exec(
+            select(User).where(User.password_reset_token_hash == token_hash)
+        ).first()
+        if not user:
+            raise HTTPException(status_code=400, detail="Invalid or expired token")
+        if password_reset_token_is_expired(user):
+            raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+        user.hashed_password = hash_password(payload.password)
+        user.password_reset_token_hash = None
+        user.password_reset_sent_at = None
+        user.token_version = int(user.token_version or 0) + 1
+        session.add(user)
+        session.commit()
+
+        log_activity(session, "password_reset_confirmed", user=user)
+        session.commit()
+
+        return {"message": "Password updated successfully"}
+
+
+@app.post("/auth/change-password", response_model=MessageResponse)
+def change_password(payload: ChangePasswordRequest, current: User = Depends(get_current_user)) -> Dict[str, str]:
+    require_strong_password(payload.new_password)
+    with Session(engine) as session:
+        user = session.exec(select(User).where(User.id == current.id)).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if not verify_password(payload.current_password, user.hashed_password):
+            raise HTTPException(status_code=400, detail="Invalid current password")
+
+        user.hashed_password = hash_password(payload.new_password)
+        user.token_version = int(user.token_version or 0) + 1
+        user.password_reset_token_hash = None
+        user.password_reset_sent_at = None
+        session.add(user)
+        session.commit()
+
+        log_activity(session, "password_changed", user=user)
+        session.commit()
+
+        return {"message": "Password changed successfully. Please sign in again."}
 
 
 @app.post("/auth/login", response_model=Token)
 def login(payload: LoginRequest, request: Request) -> Dict[str, str]:
     with Session(engine) as session:
-        user = get_user_by_username(session, payload.username)
+        username = normalize_username(payload.username)
+        client_ip = get_client_ip(request)
+        throttle_keys = [f"username:{username.lower()}"]
+        if client_ip:
+            throttle_keys.append(f"ip:{client_ip}")
+
+        assert_not_rate_limited(session, *throttle_keys)
+
+        user = get_user_by_username(session, username)
         if not user or not verify_password(payload.password, user.hashed_password):
+            register_login_failure(session, *throttle_keys)
             log_activity(
                 session,
                 "login_failed",
-                username=payload.username,
+                username=username,
                 details={"reason": "invalid_credentials"},
-                ip=get_client_ip(request),
+                ip=client_ip,
             )
             session.commit()
             raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -426,11 +829,18 @@ def login(payload: LoginRequest, request: Request) -> Dict[str, str]:
             session.commit()
             raise HTTPException(status_code=403, detail="User is blocked")
 
+        if user.username.lower() != ADMIN_USER.lower() and user.email and not user.email_verified:
+            register_login_failure(session, *throttle_keys)
+            session.commit()
+            raise HTTPException(status_code=403, detail="Email not verified")
+
+        clear_login_failures(session, *throttle_keys)
+
         user.last_seen_at = datetime.utcnow()
         session.add(user)
 
         token = create_access_token(user.username, token_version=user.token_version, role=user.role)
-        log_activity(session, "login_success", user=user, ip=get_client_ip(request))
+        log_activity(session, "login_success", user=user, ip=client_ip)
         session.commit()
 
         return {"access_token": token}
